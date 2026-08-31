@@ -8,7 +8,7 @@ transform/parser.py.
 """
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit
 
@@ -71,10 +71,18 @@ class SourceParser:
     ) -> str:
         listing_parameters = self.source_config.listing_params
         date_format = listing_parameters["date_format"]
+        date_range = self.source_config.date_range
 
-        start_date_text = start_date.strftime(date_format)
+        source_start_date = start_date
+        if not date_range.start_inclusive:
+            source_start_date -= timedelta(days=1)
 
-        end_date_text = end_date.strftime(date_format)
+        source_end_date = end_date
+        if not date_range.end_inclusive:
+            source_end_date += timedelta(days=1)
+
+        start_date_text = source_start_date.strftime(date_format)
+        end_date_text = source_end_date.strftime(date_format)
 
         section_url = urlsplit(self.section_config.url)
         query_parameters = dict(parse_qsl(section_url.query))

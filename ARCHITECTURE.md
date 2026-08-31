@@ -22,6 +22,10 @@ lower-volume historical bodies use 365-day windows. These sizes keep listing
 pagination manageable, make retries cheaper than repeating a year, and avoid
 creating hundreds of empty tasks for inactive bodies. Airflow maps partitions
 independently, so the sizes can be tuned per section without changing code.
+Internal partition windows are inclusive. Each source declares whether its
+external start and end filters are inclusive; exclusive request boundaries are
+moved outward by one day when URLs are built, keeping partition semantics
+consistent across sites.
 
 ## Retries and rate limiting
 

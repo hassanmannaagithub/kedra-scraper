@@ -91,7 +91,11 @@ still be transformed if another document in the partition fails.
 ## Configuration
 
 `config/sources.yaml` contains source URLs, selectors, partition sizes, request
-concurrency, delays, retries, AutoThrottle, user agent, and proxy settings.
+concurrency, delays, retries, AutoThrottle, user agent, proxy settings, and date
+filter semantics. `date_range.start_inclusive` and `date_range.end_inclusive`
+describe how each source interprets its filter values. Pipeline partitions stay
+inclusive; for an exclusive source boundary, the request value is moved outward
+by one day so adjacent partitions contain neither gaps nor unintended overlap.
 Connection strings, database names, bucket names, and log level use `KEDRA_*`
 environment variables; see `.env.example` for every supported value.
 

@@ -5,9 +5,10 @@ import pytest
 from parsel import Selector
 
 from kedra_scraper.scraper.parser import SelectorMatchError, SourceParser
+from kedra_scraper.services.config import DateRangeConfig
 
 
-def make_parser():
+def make_parser(*, start_inclusive=True, end_inclusive=True):
     selectors = SimpleNamespace(
         listing_row=".listing-row",
         empty_result=".empty-results",
@@ -26,6 +27,10 @@ def make_parser():
         selectors=selectors,
     )
     source_config = SimpleNamespace(
+        date_range=DateRangeConfig(
+            start_inclusive=start_inclusive,
+            end_inclusive=end_inclusive,
+        ),
         listing_params={
             "date_format": "%d/%m/%Y",
             "date_from": "from",
@@ -62,6 +67,45 @@ def test_build_listing_url_preserves_section_parameters():
         "https://www.workplacerelations.ie/en/search/"
         "?decisions=1&body=15376&from=01/01/2026&to=31/01/2026&pageNumber=2"
     )
+
+
+def test_build_listing_url_adapts_exclusive_source_boundaries():
+    parser = make_parser(start_inclusive=False, end_inclusive=False)
+
+    listing_url = parser.build_listing_url(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 31),
+    )
+
+    assert listing_url == (
+        "https://www.workplacerelations.ie/en/search/"
+        "?decisions=1&body=15376&from=31/12/2025&to=01/02/2026&pageNumber=1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("start_inclusive", "end_inclusive", "expected_dates"),
+    [
+        (False, True, "from=31/12/2025&to=31/01/2026"),
+        (True, False, "from=01/01/2026&to=01/02/2026"),
+    ],
+)
+def test_build_listing_url_adapts_each_exclusive_boundary_independently(
+    start_inclusive,
+    end_inclusive,
+    expected_dates,
+):
+    parser = make_parser(
+        start_inclusive=start_inclusive,
+        end_inclusive=end_inclusive,
+    )
+
+    listing_url = parser.build_listing_url(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 31),
+    )
+
+    assert expected_dates in listing_url
 
 
 def test_parse_listing_record_rejects_multiple_detail_links():

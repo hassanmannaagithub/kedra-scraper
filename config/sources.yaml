@@ -12,6 +12,12 @@ sources:
       date_from: "from"
       date_to: "to"
       page: "pageNumber"
+    # The WRC form includes decisions published on both supplied dates.
+    # Sources with exclusive filters set the corresponding value to false;
+    # the parser moves that request boundary outward by one day.
+    date_range:
+      start_inclusive: true
+      end_inclusive: true
     user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     download_delay: 1.0
     concurrent_requests: 2

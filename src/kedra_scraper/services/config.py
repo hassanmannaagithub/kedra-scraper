@@ -59,6 +59,20 @@ class SectionConfig(BaseModel):
     )
 
 
+class DateRangeConfig(BaseModel):
+    """How a source interprets the values of its date-filter parameters.
+
+    Pipeline partitions are inclusive. Exclusive source boundaries are moved
+    outward by one day when a listing URL is built, preserving the requested
+    document set without changing partition or storage semantics.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    start_inclusive: bool = True
+    end_inclusive: bool = True
+
+
 class SourceConfig(BaseModel):
     """One website, as declared in ``config/sources.yaml``."""
 
@@ -72,6 +86,7 @@ class SourceConfig(BaseModel):
     listing_params: dict[str, str] = Field(
         default_factory=lambda: dict(_LISTING_PARAM_DEFAULTS)
     )
+    date_range: DateRangeConfig = Field(default_factory=DateRangeConfig)
     user_agent: str
     download_delay: float
     concurrent_requests: int
