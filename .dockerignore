@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.coverage
+.env
+proxies.txt
+*.pdf
+PLAN*.md
+PHASES*.md
+TODO.md

@@ -1,0 +1,54 @@
+# Sources/sections config. Edit this file and restart a run; git is the
+# review and rollback mechanism.
+#
+# Selectors and body ids verified against the live site. All four bodies
+# share one source (workplacerelations.ie hosts all of them at the same
+# domain) and the same selector set.
+sources:
+  wrc:
+    base_url: "https://www.workplacerelations.ie"
+    listing_params:
+      date_format: "%d/%m/%Y"
+      date_from: "from"
+      date_to: "to"
+      page: "pageNumber"
+    user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    download_delay: 1.0
+    concurrent_requests: 2
+    http_timeout: 60
+    robots_obey: true
+    autothrottle_enabled: true
+    autothrottle_start_delay: 1.0
+    autothrottle_max_delay: 30.0
+    retry_enabled: true
+    retry_times: 3
+    retry_http_codes: [408, 429, 500, 502, 503, 504]
+    proxy_enabled: false
+    proxy_list_path: "proxies.txt"
+    sections:
+      wrc_adjudication:
+        url: "https://www.workplacerelations.ie/en/search/?decisions=1&body=15376"
+        partition_days: 30
+        selectors: &wrc_selectors
+          listing_row: "li.each-item"
+          empty_result: "div.searchhead"
+          identifier: "span.refNO"
+          title: "h2.title"
+          description: "p.description"
+          published_date: "span.date"
+          detail_link: "h2.title a"
+          next_page: ".next"
+          doc_link: null
+          content_container: "div.content"
+      labour_court:
+        url: "https://www.workplacerelations.ie/en/search/?decisions=1&body=3"
+        partition_days: 30
+        selectors: *wrc_selectors
+      employment_appeals_tribunal:
+        url: "https://www.workplacerelations.ie/en/search/?decisions=1&body=2"
+        partition_days: 365
+        selectors: *wrc_selectors
+      equality_tribunal:
+        url: "https://www.workplacerelations.ie/en/search/?decisions=1&body=1"
+        partition_days: 365
+        selectors: *wrc_selectors

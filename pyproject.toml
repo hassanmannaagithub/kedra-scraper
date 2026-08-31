@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kedra-scraper"
+version = "0.1.0"
+description = "Legal document scraping pipeline (workplacerelations.ie)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "pymongo>=4.7",
+    "minio>=7.2",
+    "scrapy>=2.14",
+    "parsel>=1.8",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.2",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
