@@ -14,8 +14,6 @@ class RotatingProxyMiddleware:
     def __init__(self, proxy_urls: list[str]):
         self.proxy_url_cycle = cycle(proxy_urls)
 
-    # Scrapy factory hook, name fixed by Scrapy: builds the middleware, or
-    # raising NotConfigured removes it from the chain.
     @classmethod
     def from_crawler(cls, crawler):
         if not crawler.settings.getbool("PROXY_ENABLED"):
@@ -33,12 +31,9 @@ class RotatingProxyMiddleware:
             raise NotConfigured(f"proxy list {proxy_list_path} is empty")
         return cls(proxy_urls)
 
-    # Scrapy hook, name fixed by Scrapy: called for every outgoing request.
-    # Scrapy 2.14 stopped passing the spider to downloader middleware hooks.
     def process_request(self, request):
         proxy_url = next(self.proxy_url_cycle)
         request.meta["proxy"] = proxy_url
-        # Credential-free host:port, carried onto the Mongo row for debugging.
         proxy_host = proxy_url.rsplit("@", 1)[-1]
         request.meta["proxy_host"] = proxy_host
         logger.debug("proxy %s -> %s", proxy_host, request.url)

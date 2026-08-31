@@ -32,7 +32,7 @@ class TransformedDocument(BaseModel):
     file_path: str
     file_hash: str
     transformed_at: datetime
-    run_id: str  # the transform run, not the scrape run
+    run_id: str
 
 
 class TransformedDocumentService:

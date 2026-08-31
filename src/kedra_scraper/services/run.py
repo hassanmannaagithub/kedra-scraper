@@ -24,7 +24,7 @@ class PartitionSummary(DocumentCounters):
     window_start: date
     window_end: date
     finish_reason: str
-    fatal: Optional[str] = None  # the why, when finish_reason != finished
+    fatal: Optional[str] = None
     started_at: datetime
     finished_at: datetime
     duration_seconds: float
@@ -75,10 +75,6 @@ class RunService:
             duration_seconds=(finished_at - started_at).total_seconds(),
             **document_counts_by_status,
         )
-        # The run summary keeps a running sum of document counts across all
-        # its partitions in a nested "totals" sub-document. Mongo's $inc
-        # addresses nested fields with dot paths, so {"found": 12} becomes
-        # {"totals.found": 12} — "add 12 to run.totals.found".
         run_total_increments_by_field = {}
         for metric, count in document_counts_by_status.items():
             run_total_increments_by_field[f"totals.{metric}"] = count

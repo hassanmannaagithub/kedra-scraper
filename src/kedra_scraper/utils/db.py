@@ -54,7 +54,6 @@ def ensure_indexes(databases: Databases) -> None:
         [("partition_date", ASCENDING), ("section_id", ASCENDING)]
     )
 
-    # One transformed result per landing object.
     databases.transformed_documents.create_index(
         [("source_file_path", ASCENDING)],
         unique=True,

@@ -80,9 +80,6 @@ class SourceConfig(BaseModel):
 
     source_id: str
     base_url: str
-    # Query-param names/format for the listing URL. A dict, not dedicated
-    # fields: a site needing one more param (e.g. category) just adds a key
-    # here instead of the schema growing a new column for it.
     listing_params: dict[str, str] = Field(
         default_factory=lambda: dict(_LISTING_PARAM_DEFAULTS)
     )
@@ -149,7 +146,7 @@ class ConfigService:
     def get_sections_by_source_id(self, source_id: str) -> dict[str, SectionConfig]:
         """Config for every section of a source, resolved once at run start.
         A mid-run edit must not split a run."""
-        self.get_source(source_id)  # raises if the source itself is unknown
+        self.get_source(source_id)
         matching_sections: dict[str, SectionConfig] = {}
         for section_id in sorted(self.sections):
             section_config = self.sections[section_id]

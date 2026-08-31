@@ -1,6 +1,3 @@
-// Transform is read-only on landing_zone so source data remains immutable.
-// Sources/sections config lives in config/sources.yaml now, not Mongo, so
-// no user needs a role on a "config" database.
 db = db.getSiblingDB("admin");
 
 db.createUser({

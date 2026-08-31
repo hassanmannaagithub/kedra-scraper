@@ -32,9 +32,9 @@ class Document(BaseModel):
     file_path: Optional[str] = None
     file_hash: Optional[str] = None
     etag: Optional[str] = None
-    proxy: Optional[str] = None  # host:port the fetch went through, no credentials
+    proxy: Optional[str] = None
     status: Literal["stored", "failed"]
-    error: Optional[dict] = None  # {stage, reason, url} on failure
+    error: Optional[dict] = None
     scraped_at: datetime
     run_id: str
 
@@ -46,8 +46,6 @@ class DocumentService:
 
     def __init__(self, databases: Databases):
         self.databases = databases
-
-    # -- dedup lookup ------------------------------------------------
 
     def get_stored_documents_by_partition_range(
         self,
@@ -99,8 +97,6 @@ class DocumentService:
             {"identifier": identifier}, sort=[("version", -1)]
         )
         return latest_document["version"] + 1 if latest_document else 1
-
-    # -- writes ----------------------------------------------------------------
 
     def insert(self, document: Document) -> None:
         self.databases.documents.insert_one(bson_safe(document.model_dump()))

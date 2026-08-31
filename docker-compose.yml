@@ -43,8 +43,6 @@ services:
       timeout: 5s
       retries: 12
 
-  # Run a scraper partition entirely inside Docker, for example:
-  # docker compose run --rm scraper --section wrc_adjudication ...
   scraper:
     profiles: ["tools"]
     build:
@@ -63,15 +61,12 @@ services:
     environment: *kedra-environment
     depends_on: *kedra-dependencies
 
-  # Unit tests need no host Python installation and intentionally do not start
-  # MongoDB or MinIO because the current suite is isolated from external I/O.
   test:
     profiles: ["tools"]
     build:
       context: .
       target: test
 
-  # Airflow's metadata is separate from pipeline data in MongoDB and MinIO.
   postgres:
     profiles: ["airflow"]
     image: postgres:16-alpine
@@ -92,13 +87,11 @@ services:
     build:
       context: .
       target: airflow
-    # Clear stale gunicorn pid files first: they persist in the airflow-home
-    # volume after an unclean stop and block the webserver from starting.
     command: bash -c "rm -f /opt/airflow/airflow-webserver*.pid && exec airflow standalone"
     ports:
       - "8080:8080"
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor  # parallel mapped tasks; caps live in the DAG
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
@@ -106,7 +99,7 @@ services:
       KEDRA_MINIO_ENDPOINT: minio:9000
       KEDRA_CONFIG_PATH: /opt/airflow/config/sources.yaml
     volumes:
-      - airflow-home:/opt/airflow  # keeps admin password and logs across recreations
+      - airflow-home:/opt/airflow
       - ./dags:/opt/airflow/dags
       - ./config:/opt/airflow/config:ro
     depends_on:

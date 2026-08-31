@@ -23,11 +23,7 @@ from airflow.models.param import Param
 from kedra_scraper.services import ConfigService, RunService
 from kedra_scraper.utils.partitions import build_partitions as build_partition_windows
 
-# How many partitions may scrape at once. Every partition hits the same
-# domain, so this multiplies the per-process download_delay politeness rate.
 PARALLEL_SCRAPES = 5
-# Transforms are local work (Mongo + MinIO), no politeness concern — this
-# only bounds CPU/memory on the worker.
 PARALLEL_TRANSFORMS = 2
 
 
@@ -112,8 +108,6 @@ def ingest_pipeline():
 
     @task(trigger_rule="all_done", max_active_tis_per_dagrun=PARALLEL_TRANSFORMS)
     def transform_partition(partition_spec: dict):
-        # all_done: a partially failed scrape may still have stored documents,
-        # and transform's diff query picks up exactly what landed.
         subprocess.run(
             [sys.executable, "-m", "kedra_scraper.transform",
              "--section", partition_spec["section_id"],

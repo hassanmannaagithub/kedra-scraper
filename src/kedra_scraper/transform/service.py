@@ -36,7 +36,6 @@ def normalize_identifier(raw_identifier: str) -> str:
     (collapse whitespace, tighten hyphens, uppercase — WRC renders the same
     ref as 'IR - SC - 00003328' and 'ir-sc-00003328')."""
     normalized_identifier = " ".join(raw_identifier.split())
-    # the site mixes dash characters too (observed: 'IR - SC – 00004740')
     normalized_identifier = re.sub(
         r"[\u2010\u2011\u2012\u2013\u2014]",
         "-",
@@ -100,7 +99,7 @@ class TransformService:
                     run_id,
                 )
                 transformation_counts["transformed"] += 1
-            except Exception as exc:  # contained: one bad doc, not the range
+            except Exception as exc:
                 transformation_counts["failed"] += 1
                 logger.error(
                     "transform failed",

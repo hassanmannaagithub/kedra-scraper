@@ -52,7 +52,7 @@ class ListingPage:
 @dataclass(frozen=True)
 class DocRef:
     url: str
-    doc_type: Optional[str]  # None until get_doc_type sniffs the response
+    doc_type: Optional[str]
 
 
 class SourceParser:
@@ -60,8 +60,6 @@ class SourceParser:
         self.source_config = source_config
         self.section_config = section_config
         self.selectors = section_config.selectors
-
-    # -- URLs ---------------------------------------------------------------
 
     def build_listing_url(
         self,
@@ -103,16 +101,10 @@ class SourceParser:
         return listing_url
 
     def encode_query(self, query_parameters: dict[str, str]) -> str:
-        # Literal "/" is legal in a query value (RFC 3986); keeping it readable
-        # matches how sites' own pager links tend to render dates.
         return urlencode(query_parameters, quote_via=quote, safe="/")
 
     def normalize_url(self, href: str, page_url: str) -> str:
-        # Interior whitespace is significant on some sources (WRC document
-        # URLs 404 if it is stripped): encode it, only trim the ends.
         return urljoin(page_url, quote(href.strip(), safe="/:?&=%~"))
-
-    # -- listing pages --------------------------------------------------------
 
     def parse_listing_page(self, html: str, page_url: str) -> ListingPage:
         listing_record_selector = self.selectors.listing_row
@@ -309,13 +301,10 @@ class SourceParser:
 
         return self.normalize_url(next_page_href, page_url)
 
-    # -- detail pages -----------------------------------------------------------
-
     def parse_detail_page(self, html: str, detail_url: str) -> DocRef:
         document_link_selector = self.selectors.doc_link
 
         if document_link_selector is None:
-            # The decision *is* the detail page (all four WRC bodies).
             return DocRef(url=detail_url, doc_type="html")
 
         document = Selector(text=html)
@@ -345,8 +334,6 @@ class SourceParser:
                 0].strip().lower()
             return DOCUMENT_TYPE_BY_CONTENT_TYPE.get(normalized_content_type)
         return None
-
-    # -- helpers ------------------------------------------------------------------
 
     @staticmethod
     def clean_text(text: str) -> str:

@@ -21,9 +21,6 @@ COPY tests ./tests
 
 CMD ["pytest"]
 
-# Airflow is kept as a separate target because its base image already owns
-# Python and the airflow user. The application package is shared by every DAG
-# task, while dags and config are mounted by Compose for quick iteration.
 FROM apache/airflow:2.10.4-python3.12 AS airflow
 
 COPY --chown=airflow:root pyproject.toml scrapy.cfg /opt/ingest/

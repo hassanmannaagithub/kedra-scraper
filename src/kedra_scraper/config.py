@@ -11,16 +11,13 @@ class Settings(BaseSettings):
         env_prefix="KEDRA_", env_file=".env", extra="ignore"
     )
 
-    # Sources/sections config
     config_path: str = "config/sources.yaml"
 
-    # Mongo
     mongo_uri: str = "mongodb://ingest_admin:ingest_admin@localhost:27017/?authSource=admin"
     landing_db: str = "landing_zone"
     transformed_db: str = "transformed"
     meta_db: str = "meta"
 
-    # MinIO
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
@@ -28,7 +25,6 @@ class Settings(BaseSettings):
     landing_bucket: str = "landing-zone"
     transformed_bucket: str = "transformed"
 
-    # Runtime logging. Source crawl behavior lives in config/sources.yaml.
     log_level: str = "INFO"
 
 

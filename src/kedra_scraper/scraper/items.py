@@ -4,7 +4,7 @@ items. ``content`` rides along for the pipelines and never reaches Mongo;
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
@@ -19,7 +19,7 @@ class DocumentItem:
     source_url: str
     doc_link: str
     doc_type: str
-    status: str  # "stored" | "failed"
+    status: Literal["stored", "failed"]
     run_id: str
     scraped_at: datetime
     content: Optional[bytes] = None
@@ -28,4 +28,4 @@ class DocumentItem:
     file_path: Optional[str] = None
     file_hash: Optional[str] = None
     etag: Optional[str] = None
-    proxy: Optional[str] = None  # host:port only, never credentials
+    proxy: Optional[str] = None

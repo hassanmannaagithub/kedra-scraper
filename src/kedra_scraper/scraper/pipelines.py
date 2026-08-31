@@ -29,10 +29,6 @@ def _stable_content(item: DocumentItem) -> bytes:
         raise ValueError(f"stored item {item.identifier!r} has no content")
     content = item.content
     if item.doc_type == "html":
-        # HTML comments are not document content and may contain volatile
-        # server/cache metadata. Remove them for every source so those changes
-        # cannot create false versions. The hash still describes the exact
-        # bytes stored in MinIO.
         return _HTML_COMMENT.sub(b"", content)
     return content
 
@@ -42,14 +38,10 @@ class DocumentPipeline:
     def __init__(self, crawler):
         self.crawler = crawler
 
-    # Scrapy factory hook, name fixed by Scrapy: hands the pipeline the
-    # crawler, which is how it reaches the spider and the stats collector —
-    # Scrapy 2.14 stopped passing the spider to the hooks below.
     @classmethod
     def from_crawler(cls, crawler):
         return cls(crawler)
 
-    # Scrapy hook, name fixed by Scrapy: called once when the crawl starts.
     def open_spider(self):
         spider = self.crawler.spider
         self.document_service = spider.documents
@@ -59,7 +51,6 @@ class DocumentPipeline:
         self.object_store.ensure_buckets()
         self.landing_bucket = get_settings().landing_bucket
 
-    # Scrapy hook, name fixed by Scrapy: called for every item the spider yields.
     def process_item(self, item: DocumentItem):
         if item.status == "failed":
             item.version = self.document_service.next_version(item.identifier)
@@ -68,8 +59,6 @@ class DocumentPipeline:
             self.logger.warning("failed %s: %s", item.identifier, item.error)
             return item
 
-        # The content hash is the authoritative deduplication check: identical
-        # bytes mean no new version, upload, or Mongo row — just a counted skip.
         item.content = _stable_content(item)
         item.file_hash = sha256_bytes(item.content)
         if self.document_service.content_exists(item.identifier, item.file_hash):

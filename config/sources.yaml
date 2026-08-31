@@ -1,9 +1,3 @@
-# Sources/sections config. Edit this file and restart a run; git is the
-# review and rollback mechanism.
-#
-# Selectors and body ids verified against the live site. All four bodies
-# share one source (workplacerelations.ie hosts all of them at the same
-# domain) and the same selector set.
 sources:
   wrc:
     base_url: "https://www.workplacerelations.ie"
@@ -12,9 +6,6 @@ sources:
       date_from: "from"
       date_to: "to"
       page: "pageNumber"
-    # The WRC form includes decisions published on both supplied dates.
-    # Sources with exclusive filters set the corresponding value to false;
-    # the parser moves that request boundary outward by one day.
     date_range:
       start_inclusive: true
       end_inclusive: true

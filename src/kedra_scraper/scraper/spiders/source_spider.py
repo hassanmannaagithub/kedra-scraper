@@ -26,7 +26,7 @@ from kedra_scraper.scraper.parser import (DocRef, ListingRecord, SourceParser,
 
 
 class SourceSpider(scrapy.Spider):
-    name = "source"  # Scrapy requires a class attribute called exactly "name"
+    name = "source"
 
     def __init__(self, section: str, run_id: str, start: str, end: str, **kwargs):
         super().__init__(**kwargs)
@@ -36,8 +36,6 @@ class SourceSpider(scrapy.Spider):
         self.window_end = date.fromisoformat(end)
         self.partition_date = self.window_start
 
-    # Scrapy factory hook, name fixed by Scrapy: builds the spider and gives
-    # it access to the crawler (settings, stats, signals).
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super().from_crawler(crawler, *args, **kwargs)
@@ -59,9 +57,6 @@ class SourceSpider(scrapy.Spider):
         self.source_config = source_config
         self.parser = SourceParser(source_config, section_config)
 
-    # -- listing loop ---------------------------------------------------------
-
-    # Scrapy hook, name fixed by Scrapy: yields the first request(s) of the crawl.
     async def start(self):
         url = self.parser.build_listing_url(
             self.window_start,
@@ -88,14 +83,12 @@ class SourceSpider(scrapy.Spider):
         row_errors = parsed_listing.errors
         proxy_host = response.meta.get("proxy_host")
 
-        # Fetching is dumb: "found" is rows seen across listing pages, not a
-        # source-reported total (no site-specific banner parsing).
         self.crawler.stats.inc_value(
             "kedra/found",
             len(listing_records) + len(row_errors),
         )
 
-        for row_error in row_errors:  # layer 2: one bad row, not a partition
+        for row_error in row_errors:
             identifier = f"unknown:{sha256_bytes(row_error.snippet.encode())[:16]}"
             yield self._failed_item(
                 identifier,
@@ -121,7 +114,7 @@ class SourceSpider(scrapy.Spider):
                         "handle_httpstatus_list": [304],
                     },
                 )
-            except Exception as exc:  # layer 2: one bad row, not a partition
+            except Exception as exc:
                 yield self._failed_item(
                     listing_record.identifier,
                     "listing_record",
@@ -145,8 +138,6 @@ class SourceSpider(scrapy.Spider):
                 callback=self.handle_listing,
                 errback=self.errback_listing,
             )
-
-    # -- detail + document ------------------------------------------------------
 
     def handle_detail(self, response):
         if response.status == 304:
@@ -289,8 +280,6 @@ class SourceSpider(scrapy.Spider):
             proxy=proxy,
         )
 
-    # -- errbacks -----------------------------------------------
-
     def errback_record(self, failure):
         if failure.check(HttpError):
             status_code = failure.value.response.status
@@ -317,8 +306,6 @@ class SourceSpider(scrapy.Spider):
         self.crawler.stats.set_value("kedra/fatal", message)
         self.logger.error(message)
         raise CloseSpider("listing_failed")
-
-    # -- lifecycle ------------------------------------------------------------
 
     def _on_spider_closed(self, reason):
         self.dbs.landing.client.close()

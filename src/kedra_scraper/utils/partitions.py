@@ -19,7 +19,7 @@ class Partition(BaseModel):
     section_id: str
     partition_date: date
     start: date
-    end: date  # inclusive
+    end: date
 
 
 def build_partitions(
