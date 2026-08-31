@@ -1,0 +1,121 @@
+x-kedra-environment: &kedra-environment
+  KEDRA_MONGO_URI: mongodb://ingest_admin:ingest_admin@mongo:27017/?authSource=admin
+  KEDRA_MINIO_ENDPOINT: minio:9000
+  KEDRA_CONFIG_PATH: /opt/kedra/config/sources.yaml
+
+x-kedra-dependencies: &kedra-dependencies
+  mongo:
+    condition: service_healthy
+  minio:
+    condition: service_healthy
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    volumes:
+      - mongo-data:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Run a scraper partition entirely inside Docker, for example:
+  # docker compose run --rm scraper --section wrc_adjudication ...
+  scraper:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: app
+    entrypoint: ["python", "-m", "kedra_scraper.scraper.runner"]
+    environment: *kedra-environment
+    depends_on: *kedra-dependencies
+
+  transform:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: app
+    entrypoint: ["python", "-m", "kedra_scraper.transform"]
+    environment: *kedra-environment
+    depends_on: *kedra-dependencies
+
+  # Unit tests need no host Python installation and intentionally do not start
+  # MongoDB or MinIO because the current suite is isolated from external I/O.
+  test:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: test
+
+  # Airflow's metadata is separate from pipeline data in MongoDB and MinIO.
+  postgres:
+    profiles: ["airflow"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  airflow:
+    profiles: ["airflow"]
+    build:
+      context: .
+      target: airflow
+    # Clear stale gunicorn pid files first: they persist in the airflow-home
+    # volume after an unclean stop and block the webserver from starting.
+    command: bash -c "rm -f /opt/airflow/airflow-webserver*.pid && exec airflow standalone"
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor  # parallel mapped tasks; caps live in the DAG
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      KEDRA_MONGO_URI: mongodb://ingest_admin:ingest_admin@mongo:27017/?authSource=admin
+      KEDRA_MINIO_ENDPOINT: minio:9000
+      KEDRA_CONFIG_PATH: /opt/airflow/config/sources.yaml
+    volumes:
+      - airflow-home:/opt/airflow  # keeps admin password and logs across recreations
+      - ./dags:/opt/airflow/dags
+      - ./config:/opt/airflow/config:ro
+    depends_on:
+      <<: *kedra-dependencies
+      postgres:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
+  minio-data:
+  airflow-home:
+  postgres-data:
