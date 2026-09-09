@@ -105,8 +105,8 @@ def test_listing_record_without_etag_is_requested_normally():
         detail_link="https://example.com/decision-1",
     )
     spider.parser = SimpleNamespace(
-        parse_listing_page=lambda _html, _url: ListingPage(records=[listing_record]),
-        get_next_page_url=lambda _html, _url: None,
+        parse_listing_page=lambda _response: ListingPage(records=[listing_record]),
+        get_next_page_url=lambda _response: None,
     )
     spider.documents = SimpleNamespace(
         get_latest_etag=lambda _identifier, _section_id, _url: None
@@ -138,8 +138,8 @@ def test_next_listing_page_uses_the_selector_href():
     )
     spider.crawler = SimpleNamespace(stats=Stats())
     spider.parser = SimpleNamespace(
-        parse_listing_page=lambda _html, _url: ListingPage(records=[]),
-        get_next_page_url=lambda _html, _url: (
+        parse_listing_page=lambda _response: ListingPage(records=[]),
+        get_next_page_url=lambda _response: (
             "https://example.com/listing?pageNumber=2"
         ),
     )
@@ -172,7 +172,7 @@ def test_document_request_uses_normal_url_filtering():
         detail_link="https://example.com/decision-1",
     )
     spider.parser = SimpleNamespace(
-        parse_detail_page=lambda _html, _url: DocRef(
+        parse_detail_page=lambda _response: DocRef(
             url="https://example.com/decision-1.pdf",
             doc_type="pdf",
         )
@@ -216,8 +216,8 @@ def test_listing_record_uses_stored_etag_for_direct_document_request():
         detail_link="https://example.com/decision-1",
     )
     spider.parser = SimpleNamespace(
-        parse_listing_page=lambda _html, _url: ListingPage(records=[listing_record]),
-        get_next_page_url=lambda _html, _url: None,
+        parse_listing_page=lambda _response: ListingPage(records=[listing_record]),
+        get_next_page_url=lambda _response: None,
     )
     spider.documents = SimpleNamespace(
         get_latest_etag=lambda _identifier, _section_id, _url: "html-etag"

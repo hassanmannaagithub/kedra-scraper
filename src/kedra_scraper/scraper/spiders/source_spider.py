@@ -71,10 +71,7 @@ class SourceSpider(scrapy.Spider):
 
     def handle_listing(self, response):
         try:
-            parsed_listing = self.parser.parse_listing_page(
-                response.text,
-                response.url,
-            )
+            parsed_listing = self.parser.parse_listing_page(response)
         except SelectorMatchError as exc:
             self.crawler.stats.set_value("kedra/fatal", f"listing: {exc}")
             raise CloseSpider("zero_match")
@@ -127,10 +124,7 @@ class SourceSpider(scrapy.Spider):
 
             yield request
 
-        next_page_url = self.parser.get_next_page_url(
-            response.text,
-            response.url,
-        )
+        next_page_url = self.parser.get_next_page_url(response)
 
         if next_page_url is not None:
             yield scrapy.Request(
@@ -146,7 +140,7 @@ class SourceSpider(scrapy.Spider):
 
         listing_record: ListingRecord = response.meta["listing_record"]
         try:
-            docref = self.parser.parse_detail_page(response.text, response.url)
+            docref = self.parser.parse_detail_page(response)
         except SelectorMatchError as exc:
             yield self._failed_item(
                 listing_record.identifier,
