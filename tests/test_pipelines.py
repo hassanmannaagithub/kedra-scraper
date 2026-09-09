@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
+from threading import Event
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -210,6 +211,46 @@ def test_other_items_run_while_mongo_insert_waits(pipeline_state, monkeypatch):
             release_insert.set()
             await asyncio.gather(pending, return_exceptions=True)
             await state.databases.close()
+
+    asyncio.run(run())
+
+
+def test_other_items_run_while_upload_waits(pipeline_state, monkeypatch):
+    state = pipeline_state
+    original_put = state.object_store.put_bytes
+    first = build_html_item(b"first")
+    second = build_html_item(b"second")
+    second.identifier = "ADJ-0002"
+    release_upload = Event()
+
+    async def run():
+        upload_started = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def put_bytes(bucket, key, data, content_type):
+            if data == b"first":
+                loop.call_soon_threadsafe(upload_started.set)
+                if not release_upload.wait(timeout=5):
+                    raise TimeoutError("upload was not released")
+            return original_put(bucket, key, data, content_type)
+
+        monkeypatch.setattr(state.object_store, "put_bytes", put_bytes)
+        state.pipeline.open_spider()
+        pending = asyncio.create_task(state.pipeline.process_item(first))
+        try:
+            await asyncio.wait_for(upload_started.wait(), timeout=2)
+            assert state.collection.documents == []
+            assert first.file_path is None
+            assert not pending.done()
+            assert await asyncio.wait_for(state.pipeline.process_item(second), timeout=2) is second
+            assert [doc["identifier"] for doc in state.collection.documents] == [second.identifier]
+            release_upload.set()
+            assert await asyncio.wait_for(pending, timeout=2) is first
+            assert state.collection.documents[-1]["file_path"] == first.file_path
+        finally:
+            release_upload.set()
+            await asyncio.gather(pending, return_exceptions=True)
+            await state.pipeline.close_spider()
 
     asyncio.run(run())
 

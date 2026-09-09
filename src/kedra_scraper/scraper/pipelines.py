@@ -79,7 +79,7 @@ class DocumentPipeline:
             raise DropItem(f"unchanged content: {item.identifier}")
 
         item.version = await self.document_service.next_version(item.identifier)
-        self._upload_document_content(item)
+        await self._upload_document_content(item)
         await self._insert_document_metadata(item)
         self.stats.inc_value("kedra/scraped")
         self.logger.info(
@@ -88,7 +88,7 @@ class DocumentPipeline:
         )
         return item
 
-    def _upload_document_content(self, item: DocumentItem) -> None:
+    async def _upload_document_content(self, item: DocumentItem) -> None:
         storage_safe_identifier = item.identifier.replace("/", "_").replace(" ", "_")
         extension = EXTENSION_BY_DOCUMENT_TYPE.get(item.doc_type, "bin")
         object_key = (
@@ -99,7 +99,8 @@ class DocumentPipeline:
             item.doc_type,
             "application/octet-stream",
         )
-        self.object_store.put_bytes(
+        await asyncio.to_thread(
+            self.object_store.put_bytes,
             self.landing_bucket,
             object_key,
             item.content,
