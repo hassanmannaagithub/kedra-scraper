@@ -10,6 +10,7 @@ import kedra_scraper.scraper.pipelines as pipelines_module
 from kedra_scraper.scraper.items import DocumentItem
 from kedra_scraper.scraper.pipelines import DocumentPipeline
 from kedra_scraper.services.document import DocumentService
+from kedra_scraper.utils.db import Databases
 from kedra_scraper.utils.hashing import sha256_bytes
 
 
@@ -75,19 +76,21 @@ def build_html_item(content, source_id="wrc"):
 def pipeline_state(monkeypatch):
     collection = Collection()
     object_store = ObjectStore()
+    client = SimpleNamespace(close=AsyncMock())
+    databases = Databases(
+        landing=SimpleNamespace(client=client, documents=collection),
+        transformed=SimpleNamespace(),
+        meta=SimpleNamespace(),
+    )
     crawler = SimpleNamespace(
         spider=SimpleNamespace(
-            dbs=SimpleNamespace(documents=MagicMock()),
+            dbs=databases,
             logger=SimpleNamespace(
                 info=lambda *_args: None, warning=lambda *_args: None,
             ),
         ),
         stats=Stats(),
     )
-    client = MagicMock()
-    client.__getitem__.return_value = SimpleNamespace(documents=collection)
-    client.close = AsyncMock()
-    monkeypatch.setattr(pipelines_module, "get_async_mongo_client", lambda: client)
     monkeypatch.setattr(pipelines_module, "ObjectStore", lambda: object_store)
     monkeypatch.setattr(
         pipelines_module,
@@ -97,7 +100,7 @@ def pipeline_state(monkeypatch):
     pipeline = DocumentPipeline.from_crawler(crawler)
     return SimpleNamespace(
         pipeline=pipeline, collection=collection, object_store=object_store,
-        stats=crawler.stats, client=client,
+        stats=crawler.stats, client=client, databases=databases,
     )
 
 
@@ -123,7 +126,7 @@ def test_html_comments_from_any_source_do_not_create_a_duplicate(pipeline_state)
                     build_html_item(second_response, source_id="another-source")
                 )
         finally:
-            await pipeline.close_spider()
+            await state.databases.close()
 
     asyncio.run(run())
     assert len(state.collection.documents) == 1
@@ -133,8 +136,7 @@ def test_html_comments_from_any_source_do_not_create_a_duplicate(pipeline_state)
     assert document["file_hash"] == sha256_bytes(stable_content)
     assert document["partition_date"] == datetime(2026, 1, 30, tzinfo=timezone.utc)
     assert type(pipeline.document_service) is DocumentService
-    pipeline.document_service.databases.documents.find_one.assert_not_called()
-    pipeline.document_service.databases.documents.insert_one.assert_not_called()
+    assert pipeline.document_service.databases is state.databases
     assert "content" not in document
     state.client.close.assert_awaited_once()
     assert state.stats.values == {
@@ -158,7 +160,7 @@ def test_concurrent_items_preserve_deduplication_and_versions(pipeline_state, sa
                 return_exceptions=True,
             )
         finally:
-            await state.pipeline.close_spider()
+            await state.databases.close()
 
     results = asyncio.run(run())
     assert results[0] is first
@@ -207,7 +209,7 @@ def test_other_items_run_while_mongo_insert_waits(pipeline_state, monkeypatch):
         finally:
             release_insert.set()
             await asyncio.gather(pending, return_exceptions=True)
-            await state.pipeline.close_spider()
+            await state.databases.close()
 
     asyncio.run(run())
 
@@ -231,7 +233,7 @@ def test_upload_failure_does_not_insert_metadata_and_allows_retry(pipeline_state
             item = await state.pipeline.process_item(build_html_item(b"first"))
             assert item.version == 1
         finally:
-            await state.pipeline.close_spider()
+            await state.databases.close()
 
     asyncio.run(run())
 
@@ -252,23 +254,32 @@ def test_failed_item_skips_upload_and_does_not_suppress_success(pipeline_state):
             stored_item = await state.pipeline.process_item(build_html_item(b"first"))
             assert stored_item.version == 2
         finally:
-            await state.pipeline.close_spider()
+            await state.databases.close()
 
     asyncio.run(run())
 
 
-def test_document_service_preserves_synchronous_spider_and_transform_reads():
+def test_document_service_awaits_etag_and_returns_async_cursor():
     collection = MagicMock()
-    collection.find_one.return_value = {"etag": "saved-etag"}
-    stored_documents = iter([{"identifier": "ADJ-0001", "version": 1}])
-    collection.find.return_value.sort.return_value = stored_documents
+    collection.find_one = AsyncMock(return_value={"etag": "saved-etag"})
+    cursor = MagicMock()
+    cursor.__aiter__.return_value = [{"identifier": "ADJ-0001", "version": 1}]
+    collection.find.return_value.sort.return_value = cursor
     service = DocumentService(SimpleNamespace(documents=collection))
 
-    assert service.get_latest_etag("ADJ-0001", "section", "https://example.com/1") == "saved-etag"
-    assert list(service.get_stored_documents_by_partition_range(
-        date(2026, 1, 1), date(2026, 1, 31), "section",
-    )) == [{"identifier": "ADJ-0001", "version": 1}]
-    collection.find_one.assert_called_once_with(
+    async def run():
+        assert await service.get_latest_etag(
+            "ADJ-0001", "section", "https://example.com/1",
+        ) == "saved-etag"
+        documents = service.get_stored_documents_by_partition_range(
+            date(2026, 1, 1), date(2026, 1, 31), "section",
+        )
+        assert [document async for document in documents] == [
+            {"identifier": "ADJ-0001", "version": 1},
+        ]
+
+    asyncio.run(run())
+    collection.find_one.assert_awaited_once_with(
         {
             "identifier": "ADJ-0001", "section_id": "section",
             "doc_link": "https://example.com/1", "status": "stored",

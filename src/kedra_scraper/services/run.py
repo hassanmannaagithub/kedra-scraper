@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kedra_scraper.utils.db import bson_safe, get_databases
+from kedra_scraper.utils.db import Databases, bson_safe
 
 
 class DocumentCounters(BaseModel):
@@ -47,16 +47,16 @@ class RunSummary(BaseModel):
 class RunService:
     """The only writer of ``meta.run_summaries``."""
 
-    def __init__(self):
-        self.databases = get_databases()
+    def __init__(self, databases: Databases):
+        self.databases = databases
 
-    def get_run_by_id(self, run_id: str) -> Optional[dict]:
-        return self.databases.run_summaries.find_one(
+    async def get_run_by_id(self, run_id: str) -> Optional[dict]:
+        return await self.databases.run_summaries.find_one(
             {"run_id": run_id},
             {"_id": 0},
         )
 
-    def record_partition(self, *, run_id: str, source_id: str, section_id: str,
+    async def record_partition(self, *, run_id: str, source_id: str, section_id: str,
                          window: tuple[date, date],
                          document_counts_by_status: dict[str, int],
                          finish_reason: str,
@@ -78,7 +78,7 @@ class RunService:
         run_total_increments_by_field = {}
         for metric, count in document_counts_by_status.items():
             run_total_increments_by_field[f"totals.{metric}"] = count
-        self.databases.run_summaries.update_one(
+        await self.databases.run_summaries.update_one(
             {"run_id": run_id},
             {
                 "$setOnInsert": {"run_id": run_id, "source_id": source_id,

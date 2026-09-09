@@ -41,13 +41,14 @@ class TransformedDocumentService:
     def __init__(self, dbs: Databases):
         self.dbs = dbs
 
-    def exists_for_source_file(
+    async def exists_for_source_file(
         self,
         source_file_path: str,
     ) -> bool:
-        return self.dbs.transformed_documents.find_one(
+        document = await self.dbs.transformed_documents.find_one(
             {"source_file_path": source_file_path}
-        ) is not None
+        )
+        return document is not None
 
-    def insert(self, document: TransformedDocument) -> None:
-        self.dbs.transformed_documents.insert_one(bson_safe(document.model_dump()))
+    async def insert(self, document: TransformedDocument) -> None:
+        await self.dbs.transformed_documents.insert_one(bson_safe(document.model_dump()))

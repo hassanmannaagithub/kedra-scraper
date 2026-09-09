@@ -4,10 +4,10 @@ The landing zone is append-only by design — fixes happen by re-scraping or
 re-transforming, never by editing, so there is no update or delete here."""
 
 from datetime import date, datetime
-from typing import Iterator, Literal, Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-from pymongo.asynchronous.collection import AsyncCollection
+from pymongo.asynchronous.cursor import AsyncCursor
 
 from kedra_scraper.utils.db import Databases, bson_safe
 
@@ -41,34 +41,21 @@ class Document(BaseModel):
 
 
 class DocumentService:
-    """Document access with async pipeline operations and synchronous reads.
+    """Async document access; the caller owns the database client's lifetime."""
 
-    The pipeline supplies its async collection and owns that client's lifetime.
-    Spider ETag lookups and transform queries use the existing sync databases.
-    """
-
-    def __init__(
-        self,
-        databases: Databases,
-        *,
-        async_collection: Optional[AsyncCollection] = None,
-    ):
+    def __init__(self, databases: Databases):
         self.databases = databases
-        self.async_collection = async_collection
-
-    def _get_async_collection(self) -> AsyncCollection:
-        if self.async_collection is None:
-            raise RuntimeError("Pipeline operations require an async MongoDB collection")
-        return self.async_collection
 
     def get_stored_documents_by_partition_range(
         self,
         partition_start: date,
         partition_end: date,
         section_id: str,
-    ) -> Iterator[dict]:
-        """Stored rows in the partition-date range and required section,
-        oldest version first. The transform run reads its candidates here."""
+    ) -> AsyncCursor:
+        """Build a cursor for stored rows, oldest version first.
+
+        This does not perform I/O; callers fetch rows with ``async for``.
+        """
         partition_query = {
             "status": "stored",
             "section_id": section_id,
@@ -83,18 +70,18 @@ class DocumentService:
         )
 
     async def content_exists(self, identifier: str, file_hash: str) -> bool:
-        document = await self._get_async_collection().find_one(
+        document = await self.databases.documents.find_one(
             {"identifier": identifier, "file_hash": file_hash, "status": "stored"}
         )
         return document is not None
 
-    def get_latest_etag(
+    async def get_latest_etag(
         self,
         identifier: str,
         section_id: str,
         document_url: str,
     ) -> Optional[str]:
-        latest_document = self.databases.documents.find_one(
+        latest_document = await self.databases.documents.find_one(
             {
                 "identifier": identifier,
                 "section_id": section_id,
@@ -108,10 +95,10 @@ class DocumentService:
         return latest_document.get("etag")
 
     async def next_version(self, identifier: str) -> int:
-        latest_document = await self._get_async_collection().find_one(
+        latest_document = await self.databases.documents.find_one(
             {"identifier": identifier}, sort=[("version", -1)]
         )
         return latest_document["version"] + 1 if latest_document else 1
 
     async def insert(self, document: Document) -> None:
-        await self._get_async_collection().insert_one(bson_safe(document.model_dump()))
+        await self.databases.documents.insert_one(bson_safe(document.model_dump()))

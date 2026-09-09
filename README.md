@@ -36,6 +36,16 @@ Run the test suite:
 docker compose run --build --rm test
 ```
 
+To also test a complete crawl and transform against the local MongoDB and
+MinIO services, run the following after starting them. The test serves a local
+page, uses uniquely named test databases and buckets, and removes them afterward.
+
+```bash
+docker compose run --build --rm \
+  -e 'KEDRA_TEST_MONGO_URI=mongodb://root:root@mongo:27017/?authSource=admin' \
+  -e KEDRA_TEST_MINIO_ENDPOINT=minio:9000 test
+```
+
 Scrape one section and inclusive date window:
 
 ```bash

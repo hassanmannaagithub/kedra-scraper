@@ -3,6 +3,7 @@ Airflow subprocesses this per partition range, kept separate from
 ``service.py`` to preserve the interface/domain split."""
 
 import argparse
+import asyncio
 import json
 import sys
 from datetime import date
@@ -13,7 +14,7 @@ from kedra_scraper.utils.db import ensure_indexes, get_databases
 from kedra_scraper.utils.log import setup_logging
 
 
-def _main() -> None:
+async def _main() -> None:
     parser = argparse.ArgumentParser(
         description="Transform stored documents for a partition-date range."
     )
@@ -28,20 +29,20 @@ def _main() -> None:
     args = parser.parse_args()
 
     setup_logging(get_settings().log_level)
-    ensure_indexes(get_databases())
-
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
-    document_counts = TransformService().run(
-        start,
-        end,
-        args.run_id,
-        section_id=args.section,
-    )
+    async with get_databases() as databases:
+        await ensure_indexes(databases)
+        document_counts = await TransformService(databases).run(
+            start,
+            end,
+            args.run_id,
+            section_id=args.section,
+        )
     print(json.dumps({"run_id": args.run_id, **document_counts}))
     if document_counts["failed"]:
         sys.exit(2)
 
 
 if __name__ == "__main__":
-    _main()
+    asyncio.run(_main())

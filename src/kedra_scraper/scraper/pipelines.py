@@ -20,7 +20,6 @@ from kedra_scraper.utils.document_formats import (
 )
 from kedra_scraper.scraper.items import DocumentItem
 from kedra_scraper.services.document import Document, DocumentService
-from kedra_scraper.utils.db import get_async_mongo_client
 from kedra_scraper.utils.hashing import sha256_bytes
 from kedra_scraper.utils.objects import ObjectStore
 
@@ -40,7 +39,6 @@ class DocumentPipeline:
 
     def __init__(self, crawler):
         self.crawler = crawler
-        self.mongo_client = None
         # Retain locks only while an item is processing or waiting for one.
         self._identifier_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
@@ -56,15 +54,7 @@ class DocumentPipeline:
         self.object_store.ensure_buckets()
         settings = get_settings()
         self.landing_bucket = settings.landing_bucket
-        self.mongo_client = get_async_mongo_client()
-        self.document_service = DocumentService(
-            spider.dbs,
-            async_collection=self.mongo_client[settings.landing_db].documents,
-        )
-
-    async def close_spider(self):
-        if self.mongo_client is not None:
-            await self.mongo_client.close()
+        self.document_service = DocumentService(spider.dbs)
 
     async def process_item(self, item: DocumentItem):
         lock = self._identifier_locks.get(item.identifier)

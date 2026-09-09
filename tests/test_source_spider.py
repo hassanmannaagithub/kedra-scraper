@@ -1,5 +1,7 @@
+import asyncio
 from datetime import date
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from scrapy import Request
 from scrapy.http import HtmlResponse
@@ -19,11 +21,15 @@ class Stats:
         self.values[key] = self.values.get(key, 0) + count
 
 
+async def collect_items(items):
+    return [item async for item in items]
+
+
 class ClosableClient:
     def __init__(self):
         self.closed = False
 
-    def close(self):
+    async def close(self):
         self.closed = True
 
 
@@ -35,17 +41,15 @@ def test_spider_closes_when_scrapy_supplies_reason_as_a_keyword():
         end="2026-01-31",
     )
     client = ClosableClient()
-    spider.dbs = SimpleNamespace(
-        landing=SimpleNamespace(client=client),
-    )
+    spider.dbs = client
 
-    robustApply(
+    asyncio.run(robustApply(
         spider._on_spider_closed,
         signal=signals.spider_closed,
         sender=spider,
         spider=spider,
         reason="finished",
-    )
+    ))
 
     assert client.closed is True
 
@@ -109,7 +113,7 @@ def test_listing_record_without_etag_is_requested_normally():
         get_next_page_url=lambda _response: None,
     )
     spider.documents = SimpleNamespace(
-        get_latest_etag=lambda _identifier, _section_id, _url: None
+        get_latest_etag=AsyncMock(return_value=None)
     )
     response = HtmlResponse(
         url="https://example.com/listing",
@@ -118,7 +122,7 @@ def test_listing_record_without_etag_is_requested_normally():
         encoding="utf-8",
     )
 
-    yielded = list(spider.handle_listing(response))
+    yielded = asyncio.run(collect_items(spider.handle_listing(response)))
 
     assert len(yielded) == 1
     detail_request = yielded[0]
@@ -150,7 +154,7 @@ def test_next_listing_page_uses_the_selector_href():
         encoding="utf-8",
     )
 
-    yielded = list(spider.handle_listing(response))
+    yielded = asyncio.run(collect_items(spider.handle_listing(response)))
 
     assert len(yielded) == 1
     next_page_request = yielded[0]
@@ -178,7 +182,7 @@ def test_document_request_uses_normal_url_filtering():
         )
     )
     spider.documents = SimpleNamespace(
-        get_latest_etag=lambda _identifier, _section_id, _url: "pdf-etag"
+        get_latest_etag=AsyncMock(return_value="pdf-etag")
     )
     response = HtmlResponse(
         url=listing_record.detail_link,
@@ -190,7 +194,7 @@ def test_document_request_uses_normal_url_filtering():
         encoding="utf-8",
     )
 
-    yielded = list(spider.handle_detail(response))
+    yielded = asyncio.run(collect_items(spider.handle_detail(response)))
 
     assert len(yielded) == 1
     document_request = yielded[0]
@@ -220,7 +224,7 @@ def test_listing_record_uses_stored_etag_for_direct_document_request():
         get_next_page_url=lambda _response: None,
     )
     spider.documents = SimpleNamespace(
-        get_latest_etag=lambda _identifier, _section_id, _url: "html-etag"
+        get_latest_etag=AsyncMock(return_value="html-etag")
     )
     response = HtmlResponse(
         url="https://example.com/listing",
@@ -229,7 +233,7 @@ def test_listing_record_uses_stored_etag_for_direct_document_request():
         encoding="utf-8",
     )
 
-    yielded = list(spider.handle_listing(response))
+    yielded = asyncio.run(collect_items(spider.handle_listing(response)))
 
     detail_request = yielded[0]
     assert detail_request.headers["If-None-Match"] == b"html-etag"
@@ -260,7 +264,7 @@ def test_not_modified_detail_response_is_counted_and_skipped():
         ),
     )
 
-    yielded = list(spider.handle_detail(response))
+    yielded = asyncio.run(collect_items(spider.handle_detail(response)))
 
     assert yielded == []
     assert spider.crawler.stats.values == {"kedra/skipped_unchanged": 1}
