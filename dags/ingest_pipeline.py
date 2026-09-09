@@ -12,6 +12,7 @@ resolving a mapped XCom list with failed members raises, defeating
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -21,10 +22,16 @@ from airflow.decorators import dag, task, task_group
 from airflow.models.param import Param
 
 from kedra_scraper.services import ConfigService, RunService
+from kedra_scraper.utils.db import get_databases
 from kedra_scraper.utils.partitions import build_partitions as build_partition_windows
 
 PARALLEL_SCRAPES = 5
 PARALLEL_TRANSFORMS = 2
+
+
+async def _get_run_summary(run_id: str) -> dict | None:
+    async with get_databases() as databases:
+        return await RunService(databases).get_run_by_id(run_id)
 
 
 @dag(
@@ -126,7 +133,7 @@ def ingest_pipeline():
     @task(trigger_rule="all_done")
     def summarize(dag_run=None):
         run_id = f"airflow-{dag_run.run_id}"
-        run_summary = RunService().get_run_by_id(run_id)
+        run_summary = asyncio.run(_get_run_summary(run_id))
         if run_summary is None:
             print(f"no run summary for {run_id}")
             return

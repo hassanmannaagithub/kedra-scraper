@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 from parsel import Selector
+from scrapy.http import HtmlResponse
 
 from kedra_scraper.scraper.parser import SelectorMatchError, SourceParser
 from kedra_scraper.services.config import DateRangeConfig
@@ -46,8 +47,11 @@ def test_parse_listing_page_accepts_an_explicit_empty_result():
     parser = make_parser()
 
     listing_page = parser.parse_listing_page(
-        '<div class="empty-results">There are no search results</div>',
-        "https://example.com/listing",
+        HtmlResponse(
+            url="https://example.com/listing",
+            body='<div class="empty-results">There are no search results</div>',
+            encoding="utf-8",
+        )
     )
 
     assert listing_page.records == []
@@ -255,8 +259,11 @@ def test_get_next_page_url_returns_the_next_link_href():
     """
 
     next_page_url = parser.get_next_page_url(
-        html,
-        "https://example.com/listing?pageNumber=1",
+        HtmlResponse(
+            url="https://example.com/listing?pageNumber=1",
+            body=html,
+            encoding="utf-8",
+        )
     )
 
     assert next_page_url == "https://example.com/listing?pageNumber=2"

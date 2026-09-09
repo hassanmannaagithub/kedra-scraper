@@ -11,6 +11,7 @@ calling this in-process repeatedly.
 """
 
 import argparse
+import asyncio
 import os
 import sys
 from datetime import date, datetime, timezone
@@ -71,14 +72,19 @@ def run_partition(section_id: str, window_start: date, window_end: date,
     else:
         fatal = str(crawl_stats.get("kedra/fatal", finish_reason))
 
-    RunService().record_partition(
-        run_id=run_id, source_id=source_config.source_id,
-        section_id=section_config.section_id,
-        window=(window_start, window_end),
-        document_counts_by_status=document_counts_by_metric,
-        finish_reason=finish_reason, fatal=fatal,
-        started_at=started_at, finished_at=finished_at,
-    )
+    async def record_summary() -> None:
+        # The crawl's reactor has stopped. Own a fresh client in this loop.
+        async with get_databases() as databases:
+            await RunService(databases).record_partition(
+                run_id=run_id, source_id=source_config.source_id,
+                section_id=section_config.section_id,
+                window=(window_start, window_end),
+                document_counts_by_status=document_counts_by_metric,
+                finish_reason=finish_reason, fatal=fatal,
+                started_at=started_at, finished_at=finished_at,
+            )
+
+    asyncio.run(record_summary())
     logger.info(
         "partition end",
         finish_reason=finish_reason,
@@ -151,6 +157,11 @@ def _run_crawl(
     return crawler.stats.get_stats()
 
 
+async def _prepare_database() -> None:
+    async with get_databases() as databases:
+        await ensure_indexes(databases)
+
+
 def _main() -> None:
     """Process entrypoint: ``python -m kedra_scraper.scraper.runner``. Airflow
     subprocesses this per partition — see this module's docstring."""
@@ -168,7 +179,7 @@ def _main() -> None:
     arguments = argument_parser.parse_args()
 
     setup_logging(get_settings().log_level)
-    ensure_indexes(get_databases())
+    asyncio.run(_prepare_database())
 
     partition_result = run_partition(
         arguments.section,

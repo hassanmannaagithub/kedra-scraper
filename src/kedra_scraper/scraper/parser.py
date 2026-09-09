@@ -2,9 +2,8 @@
 
 Every site-specific value — selectors, URL params, date format — comes from
 ``SourceConfig`` / ``SectionConfig``; the spider stays free of both. Parsing
-uses parsel (same engine Scrapy responses use) so the parser runs identically
-under the spider and offline fixture tests. BeautifulSoup stays confined to
-transform/parser.py.
+uses Scrapy responses directly, including responses built from offline test
+fixtures. BeautifulSoup stays confined to transform/parser.py.
 """
 
 from dataclasses import dataclass, field
@@ -13,6 +12,7 @@ from typing import Optional
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit
 
 from parsel import Selector
+from scrapy.http import TextResponse
 
 from kedra_scraper.utils.document_formats import (
     DOCUMENT_TYPE_BY_CONTENT_TYPE,
@@ -106,14 +106,14 @@ class SourceParser:
     def normalize_url(self, href: str, page_url: str) -> str:
         return urljoin(page_url, quote(href.strip(), safe="/:?&=%~"))
 
-    def parse_listing_page(self, html: str, page_url: str) -> ListingPage:
+    def parse_listing_page(self, response: TextResponse) -> ListingPage:
+        page_url = response.url
         listing_record_selector = self.selectors.listing_row
 
-        document = Selector(text=html)
-        listing_record_elements = document.css(listing_record_selector)
+        listing_record_elements = response.css(listing_record_selector)
         if not listing_record_elements:
             empty_result_selector = self.selectors.empty_result
-            if empty_result_selector and document.css(empty_result_selector):
+            if empty_result_selector and response.css(empty_result_selector):
                 return ListingPage(records=[])
             raise SelectorMatchError(
                 f"listing_row {listing_record_selector!r} matched 0 rows at {page_url}"
@@ -271,12 +271,11 @@ class SourceParser:
 
     def get_next_page_url(
         self,
-        html: str,
-        page_url: str,
+        response: TextResponse,
     ) -> Optional[str]:
-        document = Selector(text=html)
+        page_url = response.url
         next_page_selector = self.selectors.next_page
-        next_page_elements = document.css(next_page_selector)
+        next_page_elements = response.css(next_page_selector)
 
         if not next_page_elements:
             return None
@@ -301,14 +300,14 @@ class SourceParser:
 
         return self.normalize_url(next_page_href, page_url)
 
-    def parse_detail_page(self, html: str, detail_url: str) -> DocRef:
+    def parse_detail_page(self, response: TextResponse) -> DocRef:
+        detail_url = response.url
         document_link_selector = self.selectors.doc_link
 
         if document_link_selector is None:
             return DocRef(url=detail_url, doc_type="html")
 
-        document = Selector(text=html)
-        document_link_elements = document.css(document_link_selector)
+        document_link_elements = response.css(document_link_selector)
         document_href = document_link_elements.attrib.get("href")
         if not document_href:
             raise SelectorMatchError(

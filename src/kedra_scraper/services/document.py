@@ -4,9 +4,10 @@ The landing zone is append-only by design — fixes happen by re-scraping or
 re-transforming, never by editing, so there is no update or delete here."""
 
 from datetime import date, datetime
-from typing import Iterator, Literal, Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from pymongo.asynchronous.cursor import AsyncCursor
 
 from kedra_scraper.utils.db import Databases, bson_safe
 
@@ -40,9 +41,7 @@ class Document(BaseModel):
 
 
 class DocumentService:
-    """The only writer of ``landing_zone.documents``. Write invariants —
-    append-only, version assignment, content deduplication — live here so every
-    write path shares them."""
+    """Async document access; the caller owns the database client's lifetime."""
 
     def __init__(self, databases: Databases):
         self.databases = databases
@@ -52,9 +51,11 @@ class DocumentService:
         partition_start: date,
         partition_end: date,
         section_id: str,
-    ) -> Iterator[dict]:
-        """Stored rows in the partition-date range and required section,
-        oldest version first. The transform run reads its candidates here."""
+    ) -> AsyncCursor:
+        """Build a cursor for stored rows, oldest version first.
+
+        This does not perform I/O; callers fetch rows with ``async for``.
+        """
         partition_query = {
             "status": "stored",
             "section_id": section_id,
@@ -68,18 +69,19 @@ class DocumentService:
             [("identifier", 1), ("version", 1)]
         )
 
-    def content_exists(self, identifier: str, file_hash: str) -> bool:
-        return self.databases.documents.find_one(
+    async def content_exists(self, identifier: str, file_hash: str) -> bool:
+        document = await self.databases.documents.find_one(
             {"identifier": identifier, "file_hash": file_hash, "status": "stored"}
-        ) is not None
+        )
+        return document is not None
 
-    def get_latest_etag(
+    async def get_latest_etag(
         self,
         identifier: str,
         section_id: str,
         document_url: str,
     ) -> Optional[str]:
-        latest_document = self.databases.documents.find_one(
+        latest_document = await self.databases.documents.find_one(
             {
                 "identifier": identifier,
                 "section_id": section_id,
@@ -92,11 +94,11 @@ class DocumentService:
             return None
         return latest_document.get("etag")
 
-    def next_version(self, identifier: str) -> int:
-        latest_document = self.databases.documents.find_one(
+    async def next_version(self, identifier: str) -> int:
+        latest_document = await self.databases.documents.find_one(
             {"identifier": identifier}, sort=[("version", -1)]
         )
         return latest_document["version"] + 1 if latest_document else 1
 
-    def insert(self, document: Document) -> None:
-        self.databases.documents.insert_one(bson_safe(document.model_dump()))
+    async def insert(self, document: Document) -> None:
+        await self.databases.documents.insert_one(bson_safe(document.model_dump()))

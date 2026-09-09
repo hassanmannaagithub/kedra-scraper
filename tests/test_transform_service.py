@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -22,17 +23,15 @@ class FakeDocumentService:
     def __init__(self, source_documents):
         self.source_documents = source_documents
 
-    def get_stored_documents_by_partition_range(
+    async def get_stored_documents_by_partition_range(
         self,
         _start_date,
         _end_date,
         section_id,
     ):
-        return iter(
-            document
-            for document in self.source_documents
-            if document["section_id"] == section_id
-        )
+        for document in self.source_documents:
+            if document["section_id"] == section_id:
+                yield document
 
 
 class FakeTransformedDocumentService:
@@ -40,10 +39,10 @@ class FakeTransformedDocumentService:
         self.existing_source_files = set(existing_source_files)
         self.inserted_documents = []
 
-    def exists_for_source_file(self, source_file_path):
+    async def exists_for_source_file(self, source_file_path):
         return source_file_path in self.existing_source_files
 
-    def insert(self, document):
+    async def insert(self, document):
         self.inserted_documents.append(document)
 
 
@@ -114,7 +113,6 @@ def build_service(
     config_service = FakeConfigService()
     logger = FakeLogger()
 
-    monkeypatch.setattr(transform_module, "get_databases", lambda: object())
     monkeypatch.setattr(
         transform_module,
         "DocumentService",
@@ -146,7 +144,7 @@ def build_service(
         lambda *_args, **_kwargs: logger,
     )
 
-    service = TransformService()
+    service = TransformService(object())
 
     return service, transformed_service, object_store, config_service, logger
 
@@ -184,12 +182,12 @@ def test_run_transforms_only_the_requested_section(monkeypatch):
         )
     )
 
-    counts = service.run(
+    counts = asyncio.run(service.run(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 31),
         run_id="run-1",
         section_id="wrc_adjudication",
-    )
+    ))
 
     assert counts == {
         "candidates": 1,
@@ -241,12 +239,12 @@ def test_run_transforms_html_skips_transformed_source_and_contains_failure(
         )
     )
 
-    counts = service.run(
+    counts = asyncio.run(service.run(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 31),
         run_id="run-1",
         section_id="wrc_adjudication",
-    )
+    ))
 
     assert counts == {
         "candidates": 3,
@@ -309,12 +307,12 @@ def test_run_passes_binary_content_through_unchanged(
         )
     )
 
-    counts = service.run(
+    counts = asyncio.run(service.run(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 31),
         run_id="run-1",
         section_id="wrc_adjudication",
-    )
+    ))
 
     assert counts["transformed"] == 1
 
@@ -353,12 +351,12 @@ def test_run_transforms_distinct_source_files_with_identical_content(monkeypatch
         )
     )
 
-    counts = service.run(
+    counts = asyncio.run(service.run(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 31),
         run_id="run-1",
         section_id="wrc_adjudication",
-    )
+    ))
 
     assert counts["transformed"] == 2
     assert counts["skipped"] == 0

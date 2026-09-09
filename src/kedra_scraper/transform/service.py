@@ -21,7 +21,7 @@ from kedra_scraper.services.transformed_document import (
     TransformedDocumentService,
 )
 from kedra_scraper.transform.parser import extract_content
-from kedra_scraper.utils.db import get_databases
+from kedra_scraper.utils.db import Databases
 from kedra_scraper.utils.document_formats import (
     CONTENT_TYPE_BY_DOCUMENT_TYPE,
     EXTENSION_BY_DOCUMENT_TYPE,
@@ -45,15 +45,14 @@ def normalize_identifier(raw_identifier: str) -> str:
 
 
 class TransformService:
-    def __init__(self):
+    def __init__(self, databases: Databases):
         self.config_service = ConfigService()
-        databases = get_databases()
         self.document_service = DocumentService(databases)
         self.transformed_document_service = TransformedDocumentService(databases)
         self.object_store = ObjectStore()
         self.settings = get_settings()
 
-    def run(
+    async def run(
         self,
         start_date: date,
         end_date: date,
@@ -83,10 +82,10 @@ class TransformService:
             end_date,
             section_id,
         )
-        for source_document in source_documents:
+        async for source_document in source_documents:
             transformation_counts["candidates"] += 1
             already_transformed = (
-                self.transformed_document_service.exists_for_source_file(
+                await self.transformed_document_service.exists_for_source_file(
                     source_document["file_path"],
                 )
             )
@@ -94,7 +93,7 @@ class TransformService:
                 transformation_counts["skipped"] += 1
                 continue
             try:
-                self._transform_document(
+                await self._transform_document(
                     source_document,
                     run_id,
                 )
@@ -112,7 +111,7 @@ class TransformService:
         logger.info("transform end", **transformation_counts)
         return transformation_counts
 
-    def _transform_document(
+    async def _transform_document(
         self,
         source_document: dict,
         run_id: str,
@@ -150,7 +149,7 @@ class TransformService:
             transformed_file_hash,
             run_id,
         )
-        self.transformed_document_service.insert(transformed_document)
+        await self.transformed_document_service.insert(transformed_document)
 
     def _get_transformed_content(
         self,

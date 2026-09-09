@@ -49,13 +49,13 @@ class SourceSpider(scrapy.Spider):
     def _initialize_dependencies(self):
         """Load the config once, before any request goes out —
         malformed config fails here, not on page 40."""
-        self.dbs = get_databases()
-        self.documents = DocumentService(self.dbs)
         config_service = ConfigService()
         section_config = config_service.get_section(self.section_id)
         source_config = config_service.get_source(section_config.source_id)
         self.source_config = source_config
         self.parser = SourceParser(source_config, section_config)
+        self.dbs = get_databases()
+        self.documents = DocumentService(self.dbs)
 
     async def start(self):
         url = self.parser.build_listing_url(
@@ -69,12 +69,9 @@ class SourceSpider(scrapy.Spider):
             errback=self.errback_listing,
         )
 
-    def handle_listing(self, response):
+    async def handle_listing(self, response):
         try:
-            parsed_listing = self.parser.parse_listing_page(
-                response.text,
-                response.url,
-            )
+            parsed_listing = self.parser.parse_listing_page(response)
         except SelectorMatchError as exc:
             self.crawler.stats.set_value("kedra/fatal", f"listing: {exc}")
             raise CloseSpider("zero_match")
@@ -105,7 +102,7 @@ class SourceSpider(scrapy.Spider):
                     listing_record.detail_link,
                     callback=self.handle_detail,
                     errback=self.errback_record,
-                    headers=self._get_condition_headers(
+                    headers=await self._get_condition_headers(
                         listing_record.identifier,
                         listing_record.detail_link,
                     ),
@@ -127,10 +124,7 @@ class SourceSpider(scrapy.Spider):
 
             yield request
 
-        next_page_url = self.parser.get_next_page_url(
-            response.text,
-            response.url,
-        )
+        next_page_url = self.parser.get_next_page_url(response)
 
         if next_page_url is not None:
             yield scrapy.Request(
@@ -139,14 +133,14 @@ class SourceSpider(scrapy.Spider):
                 errback=self.errback_listing,
             )
 
-    def handle_detail(self, response):
+    async def handle_detail(self, response):
         if response.status == 304:
             self.crawler.stats.inc_value("kedra/skipped_unchanged")
             return
 
         listing_record: ListingRecord = response.meta["listing_record"]
         try:
-            docref = self.parser.parse_detail_page(response.text, response.url)
+            docref = self.parser.parse_detail_page(response)
         except SelectorMatchError as exc:
             yield self._failed_item(
                 listing_record.identifier,
@@ -168,7 +162,7 @@ class SourceSpider(scrapy.Spider):
             docref.url,
             callback=self.handle_document,
             errback=self.errback_record,
-            headers=self._get_condition_headers(
+            headers=await self._get_condition_headers(
                 listing_record.identifier,
                 docref.url,
             ),
@@ -225,12 +219,12 @@ class SourceSpider(scrapy.Spider):
             proxy=response.meta.get("proxy_host"),
         )
 
-    def _get_condition_headers(
+    async def _get_condition_headers(
         self,
         identifier: str,
         document_url: str,
     ) -> dict[str, str]:
-        etag = self.documents.get_latest_etag(
+        etag = await self.documents.get_latest_etag(
             identifier,
             self.section_id,
             document_url,
@@ -307,5 +301,5 @@ class SourceSpider(scrapy.Spider):
         self.logger.error(message)
         raise CloseSpider("listing_failed")
 
-    def _on_spider_closed(self, reason):
-        self.dbs.landing.client.close()
+    async def _on_spider_closed(self, reason):
+        await self.dbs.close()
