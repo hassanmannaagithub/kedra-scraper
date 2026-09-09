@@ -7,7 +7,9 @@ content: they skip hashing and upload and land in Mongo as ``status:
 failed`` rows.
 """
 
+import asyncio
 import re
+from weakref import WeakValueDictionary
 
 from scrapy.exceptions import DropItem
 
@@ -17,7 +19,8 @@ from kedra_scraper.utils.document_formats import (
     EXTENSION_BY_DOCUMENT_TYPE,
 )
 from kedra_scraper.scraper.items import DocumentItem
-from kedra_scraper.services.document import Document
+from kedra_scraper.services.document import Document, DocumentService
+from kedra_scraper.utils.db import get_async_mongo_client
 from kedra_scraper.utils.hashing import sha256_bytes
 from kedra_scraper.utils.objects import ObjectStore
 
@@ -37,6 +40,9 @@ class DocumentPipeline:
 
     def __init__(self, crawler):
         self.crawler = crawler
+        self.mongo_client = None
+        # Retain locks only while an item is processing or waiting for one.
+        self._identifier_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -44,30 +50,47 @@ class DocumentPipeline:
 
     def open_spider(self):
         spider = self.crawler.spider
-        self.document_service = spider.documents
         self.logger = spider.logger
         self.stats = self.crawler.stats
         self.object_store = ObjectStore()
         self.object_store.ensure_buckets()
-        self.landing_bucket = get_settings().landing_bucket
+        settings = get_settings()
+        self.landing_bucket = settings.landing_bucket
+        self.mongo_client = get_async_mongo_client()
+        self.document_service = DocumentService(
+            spider.dbs,
+            async_collection=self.mongo_client[settings.landing_db].documents,
+        )
 
-    def process_item(self, item: DocumentItem):
+    async def close_spider(self):
+        if self.mongo_client is not None:
+            await self.mongo_client.close()
+
+    async def process_item(self, item: DocumentItem):
+        lock = self._identifier_locks.get(item.identifier)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._identifier_locks[item.identifier] = lock
+        async with lock:
+            return await self._process_item(item)
+
+    async def _process_item(self, item: DocumentItem):
         if item.status == "failed":
-            item.version = self.document_service.next_version(item.identifier)
-            self._insert_document_metadata(item)
+            item.version = await self.document_service.next_version(item.identifier)
+            await self._insert_document_metadata(item)
             self.stats.inc_value("kedra/failed")
             self.logger.warning("failed %s: %s", item.identifier, item.error)
             return item
 
         item.content = _stable_content(item)
         item.file_hash = sha256_bytes(item.content)
-        if self.document_service.content_exists(item.identifier, item.file_hash):
+        if await self.document_service.content_exists(item.identifier, item.file_hash):
             self.stats.inc_value("kedra/skipped_unchanged")
             raise DropItem(f"unchanged content: {item.identifier}")
 
-        item.version = self.document_service.next_version(item.identifier)
+        item.version = await self.document_service.next_version(item.identifier)
         self._upload_document_content(item)
-        self._insert_document_metadata(item)
+        await self._insert_document_metadata(item)
         self.stats.inc_value("kedra/scraped")
         self.logger.info(
             "stored %s v%s (%s) -> %s",
@@ -94,8 +117,8 @@ class DocumentPipeline:
         )
         item.file_path = f"{self.landing_bucket}/{object_key}"
 
-    def _insert_document_metadata(self, item: DocumentItem) -> None:
+    async def _insert_document_metadata(self, item: DocumentItem) -> None:
         document_fields = {}
         for field_name in Document.model_fields:
             document_fields[field_name] = getattr(item, field_name)
-        self.document_service.insert(Document(**document_fields))
+        await self.document_service.insert(Document(**document_fields))

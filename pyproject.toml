@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.2",
-    "pymongo>=4.7",
+    "pymongo>=4.13",
     "minio>=7.2",
     "scrapy>=2.14",
     "parsel>=1.8",

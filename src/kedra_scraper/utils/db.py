@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 
-from pymongo import ASCENDING, MongoClient
+from pymongo import ASCENDING, AsyncMongoClient, MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
 
@@ -12,6 +12,10 @@ from kedra_scraper.config import get_settings
 
 def get_mongo_client() -> MongoClient:
     return MongoClient(get_settings().mongo_uri, tz_aware=True)
+
+
+def get_async_mongo_client() -> AsyncMongoClient:
+    return AsyncMongoClient(get_settings().mongo_uri, tz_aware=True)
 
 
 @dataclass

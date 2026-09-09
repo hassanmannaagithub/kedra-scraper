@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Iterator, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from pymongo.asynchronous.collection import AsyncCollection
 
 from kedra_scraper.utils.db import Databases, bson_safe
 
@@ -40,12 +41,25 @@ class Document(BaseModel):
 
 
 class DocumentService:
-    """The only writer of ``landing_zone.documents``. Write invariants —
-    append-only, version assignment, content deduplication — live here so every
-    write path shares them."""
+    """Document access with async pipeline operations and synchronous reads.
 
-    def __init__(self, databases: Databases):
+    The pipeline supplies its async collection and owns that client's lifetime.
+    Spider ETag lookups and transform queries use the existing sync databases.
+    """
+
+    def __init__(
+        self,
+        databases: Databases,
+        *,
+        async_collection: Optional[AsyncCollection] = None,
+    ):
         self.databases = databases
+        self.async_collection = async_collection
+
+    def _get_async_collection(self) -> AsyncCollection:
+        if self.async_collection is None:
+            raise RuntimeError("Pipeline operations require an async MongoDB collection")
+        return self.async_collection
 
     def get_stored_documents_by_partition_range(
         self,
@@ -68,10 +82,11 @@ class DocumentService:
             [("identifier", 1), ("version", 1)]
         )
 
-    def content_exists(self, identifier: str, file_hash: str) -> bool:
-        return self.databases.documents.find_one(
+    async def content_exists(self, identifier: str, file_hash: str) -> bool:
+        document = await self._get_async_collection().find_one(
             {"identifier": identifier, "file_hash": file_hash, "status": "stored"}
-        ) is not None
+        )
+        return document is not None
 
     def get_latest_etag(
         self,
@@ -92,11 +107,11 @@ class DocumentService:
             return None
         return latest_document.get("etag")
 
-    def next_version(self, identifier: str) -> int:
-        latest_document = self.databases.documents.find_one(
+    async def next_version(self, identifier: str) -> int:
+        latest_document = await self._get_async_collection().find_one(
             {"identifier": identifier}, sort=[("version", -1)]
         )
         return latest_document["version"] + 1 if latest_document else 1
 
-    def insert(self, document: Document) -> None:
-        self.databases.documents.insert_one(bson_safe(document.model_dump()))
+    async def insert(self, document: Document) -> None:
+        await self._get_async_collection().insert_one(bson_safe(document.model_dump()))
